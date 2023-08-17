@@ -4,109 +4,97 @@ import (
 	"deep-thoughts/thoughts"
 	"fmt"
 	"log"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
 func main() {
-    log.SetFlags(0)
+	log.SetFlags(0)
 
-	p := tea.NewProgram(initialModel())
-    if _, err := p.Run(); err != nil {
-        log.Fatalf("Alas, there's been an error: %v", err)
-    }
-}
+	p := tea.NewProgram(model{})
 
-const choices = []string{"👍 Upvote", "👎 Downvote", "❌ Cancel"}
+	m, err := p.Run()
+	if err != nil {
+		log.Fatalf("Alas, there's been an error: %v", err)
+	}
 
-func initialModel() model {
-	return model{
-		selected: make(map[int]struct{}),
-		deepThought: thoughts.DeepThought{},
+	if m, ok := m.(model); ok && m.choice != "" {
+
+		switch m.choice {
+		case choices[0]:
+			thoughts.Vote(m.deepThought.Id, true)
+			log.Println("\n---\n👍 Upvoted.")
+		case choices[1]:
+			thoughts.Vote(m.deepThought.Id, false)
+			log.Println("\n---\n👎 Downvoted.")
+		case choices[2]:
+			log.Println("\n---\nAdios!")
+		}
 	}
 }
 
+var choices = []string{"👍 Upvote", "👎 Downvote", "❌ Cancel"}
+
 func (m model) Init() tea.Cmd {
-	    return getRandomThought
+	return getRandomThought
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-    switch msg := msg.(type) {
-
-    // Is it a key press?
-    case tea.KeyMsg:
-
-        // Cool, what was the actual key pressed?
-        switch msg.String() {
-
-        // These keys should exit the program.
-        case "ctrl+c", "q", "esc":
-            return m, tea.Quit
-
-        // The "up" and "k" keys move the cursor up
-        case "up", "k":
-            if m.cursor > 0 {
-                m.cursor--
-            }
-
-        // The "down" and "j" keys move the cursor down
-        case "down", "j":
-            if m.cursor < len(m.choices)-1 {
-                m.cursor++
-            }
-
-        // The "enter" key and the spacebar (a literal space) toggle
-        // the selected state for the item that the cursor is pointing at.
-        case "enter":
-            _, ok := m.selected[m.cursor]
-            if ok {
-                delete(m.selected, m.cursor)
-            } else {
-                m.selected[m.cursor] = struct{}{}
-            }
-			
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q", "esc":
 			return m, tea.Quit
-        }
+
+		case "enter":
+			// Send the choice on the channel and exit.
+			m.choice = choices[m.cursor]
+			return m, tea.Quit
+
+		case "down", "j":
+			m.cursor++
+			if m.cursor >= len(choices) {
+				m.cursor = 0
+			}
+
+		case "up", "k":
+			m.cursor--
+			if m.cursor < 0 {
+				m.cursor = len(choices) - 1
+			}
+		}
 
 	case thoughts.DeepThought:
 		m.deepThought = msg
-    }
+	}
 
-    // Return the updated model to the Bubble Tea runtime for processing.
-    // Note that we're not returning a command.
-    return m, nil
+	return m, nil
 }
 
 func (m model) View() string {
+	s := strings.Builder{}
 
-    // The header
-    s := fmt.Sprintf("%s\n\nWhat do you think?\n\n", m.deepThought.Text)
+	s.WriteString(fmt.Sprintf(`%s`, m.deepThought.Text))
+	s.WriteString("\n\nWhat do you think?\n\n")
 
-    // Iterate over our choices
-    for i, choice := range m.choices {
+	for i := 0; i < len(choices); i++ {
+		if m.cursor == i {
+			s.WriteString("(•) ")
+		} else {
+			s.WriteString("( ) ")
+		}
+		s.WriteString(choices[i])
+		s.WriteString("\n")
+	}
+	s.WriteString("\n(press q to quit)\n")
 
-        // Is the cursor pointing at this choice?
-        cursor := " " // no cursor
-        if m.cursor == i {
-            cursor = ">" // cursor!
-        }
-
-        // Is this choice selected?
-        checked := " " // not selected
-
-        // Render the row
-        s += fmt.Sprintf("%s [%s] %s\n", cursor, checked, choice)
-    }
-
-    // The footer
-    s += "\nPress q to quit.\n"
-
-    // Send the UI for rendering
-    return s
+	return s.String()
 }
 
 type model struct {
-    cursor   int
+	cursor      int
+	choice      string
 	deepThought thoughts.DeepThought
 }
 
@@ -114,8 +102,8 @@ func getRandomThought() tea.Msg {
 	thought, err := thoughts.Random()
 
 	if err != nil {
-        log.Fatal(err)
-    }
+		log.Fatalf(err.Error())
+	}
 
 	return thought
 }

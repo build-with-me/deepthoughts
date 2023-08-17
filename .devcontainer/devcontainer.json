@@ -7,7 +7,6 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"michaeljolley.vscode-twitch-themer"
 			]
 		}
 	}
